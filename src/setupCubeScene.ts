@@ -1,7 +1,6 @@
 import {
   CubeTexture,
   HemisphericLight,
-  Mesh,
   MeshBuilder,
   Orientation,
   Scene,
@@ -14,12 +13,17 @@ import * as _ from 'lodash';
 import {
   applyTo,
   clamp,
+  complement,
   evolve,
+  isNil,
   map,
   mapObjIndexed,
   pick,
   pipe,
   prop,
+  propSatisfies,
+  test,
+  when,
 } from 'ramda';
 
 import { logger } from './logger';
@@ -27,6 +31,20 @@ import { MultiCube } from './MultiCube';
 
 const debug = logger('cube-scene');
 type Keys = Combokeys.Combokeys;
+
+/** @function onNullableProp
+ * apply fn to property p, if not null/undefined
+ */
+const onNullableProp = <T, P extends keyof T>(
+  t: T,
+  p: P,
+  fn: (value: NonNullable<T[P]>) => any,
+): void =>
+  void pipe(
+    // erase p's type to remove error
+    prop(p as any),
+    when(complement(isNil), fn),
+  );
 
 const trackKey = (keys: Keys, keyName: string) => {
   const tracker = {
@@ -48,17 +66,6 @@ type Tracker = ReturnType<typeof trackKey>;
 export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
   // tslint:disable-next-line:no-unused-expression
   new HemisphericLight('light1', new Vector3(1, 1, 0), scene);
-  // When click event is raised
-  window.addEventListener('click', () => {
-    // We try to pick an object
-    const { pickedMesh } = scene.pick(scene.pointerX, scene.pointerY)!;
-    if (!pickedMesh) {
-      return;
-    }
-    debug(pickedMesh.name);
-    pickedMesh.visibility = +!pickedMesh.visibility;
-    debug(pickedMesh.isVisible);
-  });
 
   // Skybox
   const skyboxSize = 200;
@@ -85,9 +92,41 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
     rotation: 0,
   };
 
-  const player = MeshBuilder.CreateSphere('player', { diameter: 0.3 }, scene);
-  const playerZ = cubeSize + 1;
-  player.position.z += playerZ;
+  // When click event is raised
+  window.addEventListener('click', () => {
+    // We try to pick an object
+    const { pickedMesh } = scene.pick(
+      scene.pointerX,
+      scene.pointerY,
+
+      propSatisfies(test(/^\d+,\d+,\d+$/), 'name'),
+    )!;
+    if (!pickedMesh) {
+      return;
+    }
+    const info = mc.getInfo(pickedMesh as any);
+    if (!info || info.isCorner) {
+      return;
+    }
+    // pickedMesh.visibility = +!pickedMesh.visibility;
+    if (pickedMesh.material) {
+      const { material } = pickedMesh;
+      // material.wireframe = !material.wireframe;
+      debug('alpha %s', material.alpha);
+      // material.alpha
+    }
+    debug(pickedMesh.isVisible);
+  });
+
+  const playerSize = 0.3;
+  const player = MeshBuilder.CreateSphere(
+    'player',
+    { diameter: playerSize },
+    scene,
+  );
+  const playerZ = cubeSize / 2 + playerSize;
+  debug({ playerZ });
+  player.position.z = playerZ;
   const trackers = {
     up: trackKey(keys, 'up'),
     left: trackKey(keys, 'left'),
@@ -95,7 +134,7 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
     right: trackKey(keys, 'right'),
   };
 
-  const offset = 0.8;
+  const offset = 1; // 0.8;
   const clampPlayer = {
     x: clamp(-offset, offset),
     y: clamp(-offset, offset),
@@ -103,9 +142,10 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
 
   return () => {
     skybox.rotate(Vector3.Down(), 2 / 1e4);
+
     if (cube.direction) {
       let reset = false;
-      let step = 5;
+      let step = 1;
 
       cube.rotation += step;
       if (cube.rotation > 90) {
@@ -115,35 +155,49 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
 
       const radianStep = (step * Math.PI) / 180;
 
+      const playerRotationFactor = 1;
+
       switch (cube.direction) {
         case 'left': {
+          debug('spinning left', player.position.z);
           cube.mesh.rotate(Vector3.Up(), radianStep, Space.WORLD);
-          player.rotateAround(Vector3.Zero(), Vector3.Up(), radianStep * 0.25);
+          player.rotateAround(
+            Vector3.Zero(),
+            Vector3.Up(),
+            radianStep * playerRotationFactor,
+          );
           skybox.rotate(Vector3.Up(), radianStep * 0.9, Space.WORLD);
           break;
         }
         case 'right': {
+          debug('spinning right');
           cube.mesh.rotate(Vector3.Up(), -radianStep, Space.WORLD);
-          player.rotateAround(Vector3.Zero(), Vector3.Up(), -radianStep * 0.25);
+          player.rotateAround(
+            Vector3.Zero(),
+            Vector3.Up(),
+            -radianStep * playerRotationFactor,
+          );
           skybox.rotate(Vector3.Up(), -radianStep * 0.7, Space.WORLD);
           break;
         }
         case 'up': {
+          debug('spinning up');
           cube.mesh.rotate(Vector3.Left(), radianStep, Space.WORLD);
           player.rotateAround(
             Vector3.Zero(),
             Vector3.Left(),
-            radianStep * 0.25,
+            radianStep * playerRotationFactor,
           );
           skybox.rotate(Vector3.Left(), radianStep * 0.3, Space.WORLD);
           break;
         }
         case 'down': {
+          debug('spinning down');
           cube.mesh.rotate(Vector3.Left(), -radianStep, Space.WORLD);
           player.rotateAround(
             Vector3.Zero(),
             Vector3.Left(),
-            -radianStep * 0.25,
+            -radianStep * playerRotationFactor,
           );
 
           skybox.rotate(Vector3.Left(), -radianStep * 1.2, Space.WORLD);
@@ -156,15 +210,13 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
         cube.rotation = 0;
         player.position.z = playerZ;
 
-        const quaternion = player.rotationQuaternion;
-        if (quaternion) {
+        onNullableProp(player, 'rotationQuaternion', (quaternion) => {
           quaternion.set(0, 0, 0, 0);
-        }
+        });
       }
     } else {
       const heldKeys = map(prop<Tracker, 'isHeld'>('isHeld'), trackers);
 
-      // TODO: determine whether to bind to x,y, or z by checking currentSide of cube
       const playerStep = new Vector3(
         +heldKeys.left - +heldKeys.right,
         +heldKeys.up - +heldKeys.down,
@@ -196,16 +248,12 @@ export const setupCubeScene = (scene: Scene, keys: Keys): (() => void) => {
     if (!cube.direction) {
       if (atBounds.x > 0) {
         cube.direction = 'left';
-        debug('spin world left');
       } else if (atBounds.x < 0) {
         cube.direction = 'right';
-        debug('spin world right');
       } else if (atBounds.y > 0) {
         cube.direction = 'up';
-        debug('spin world up');
       } else if (atBounds.y < 0) {
         cube.direction = 'down';
-        debug('spin world down');
       }
     }
   };

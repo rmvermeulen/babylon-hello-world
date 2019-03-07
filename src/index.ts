@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { setupScreen } from './screen';
+import { setupScreen } from './setupScreen';
 
 const debug = logger('index.ts');
 

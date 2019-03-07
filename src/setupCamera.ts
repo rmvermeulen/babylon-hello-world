@@ -5,8 +5,8 @@ export const setupCamera = (scene: Scene, canvas: HTMLCanvasElement) => {
     'Camera',
     Math.PI / 2,
     Math.PI / 2,
-    2,
-    new Vector3(0, 0, 5),
+    10,
+    Vector3.Zero(),
     scene,
   );
   // camera.attachControl(canvas, true);

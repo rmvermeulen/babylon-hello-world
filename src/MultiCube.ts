@@ -18,7 +18,16 @@ export class MultiCube {
     {
       name: string;
       mesh?: Mesh;
-      enabled: boolean;
+      isEnabled: boolean;
+    }
+  >();
+
+  private meshMap = new WeakMap<
+    Mesh,
+    {
+      name: string;
+      isEnabled: boolean;
+      isCorner: boolean;
     }
   >();
   constructor(
@@ -29,6 +38,10 @@ export class MultiCube {
     debug('size before bind', this.scene, cellCount);
     this.bind(scene);
   }
+
+  public getInfo(mesh: Mesh) {
+    return this.meshMap.get(mesh);
+  }
   private bind(scene: Scene) {
     if (this._rootNode) {
       this.scene.removeTransformNode(this._rootNode);
@@ -38,7 +51,7 @@ export class MultiCube {
     // TODO: create cubes
     const cubes: Mesh[] = this.generateCubes();
 
-    const parent = new TransformNode('multi-cube-root', scene);
+    const parent = new TransformNode('mc-root', scene);
     for (const cube of cubes) {
       cube.setParent(parent);
     }
@@ -63,27 +76,31 @@ export class MultiCube {
           generate((x) => {
             const pos = [x, y, z];
             const isCorner = all(isEdge, pos);
-            const enabled = isCorner ? true : Math.random() > 0.5;
             // must be a corner- or edge piece
             if (!isCorner && none(isEdge, pos)) {
               return;
             }
             const name = pos.join();
             let mesh: Mesh | undefined;
-            if (enabled) {
-              mesh = MeshBuilder.CreateBox(name, {
-                size: cubeSize * 0.95,
-              });
-              mesh.position.set(
-                (x - offset) * cubeSize,
-                (y - offset) * cubeSize,
-                (z - offset) * cubeSize,
-              );
-            }
+
+            mesh = MeshBuilder.CreateBox(name, {
+              size: cubeSize * 0.95,
+            });
+            mesh.position.set(
+              (x - offset) * cubeSize,
+              (y - offset) * cubeSize,
+              (z - offset) * cubeSize,
+            );
+            this.meshMap.set(mesh, {
+              name,
+              isEnabled: true,
+              isCorner,
+            });
+
             this.cubeMap.set(name, {
               name,
               mesh,
-              enabled,
+              isEnabled: true,
             });
             return mesh;
           }),
@@ -97,7 +114,7 @@ export class MultiCube {
     this.cubeMap.set(rootName, {
       name: rootName,
       mesh: body,
-      enabled: true,
+      isEnabled: true,
     });
     meshes.unshift(body);
     return meshes;
